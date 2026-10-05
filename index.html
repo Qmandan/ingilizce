@@ -3144,6 +3144,15 @@ function setExercise(ex){
   $('pt-say').classList.add('hidden');
   $('pt-input').focus({preventScroll:true});
 }
+const SCEN=['at work or in a meeting','at home with family','travelling or at the airport','shopping or paying','with friends at the weekend','at a restaurant or cafe','health or at the doctor','weather or plans for the day','on the phone or online','at school or studying','hobbies and free time','commuting or in traffic','money and bills','a neighbour or a stranger','technology and gadgets','holidays and the past'];
+const shuf=a=>a.slice().sort(()=>Math.random()-.5);
+const wset=t=>new Set(norm(t).split(' ').filter(w=>w.length>1));
+function similar(a,b){
+  const A=wset(a),B=wset(b);
+  if(!A.size||!B.size)return norm(a)===norm(b);
+  let n=0;A.forEach(w=>{if(B.has(w))n++;});
+  return n/(A.size+B.size-n)>=.6;
+}
 function fill(){
   if(fetchP)return fetchP;
   if(typeof samplePromise==='undefined'||!navigator.onLine)return Promise.resolve(false);
@@ -3151,13 +3160,17 @@ function fill(){
   fetchP=(async()=>{
     try{
       const s=await samplePromise;
-      const r=await s.json('You are an English teacher. A Turkish B1 learner is practising ONE speaking structure.\nStructure: "'+c.title+'" (rule: '+c.formula+'). When used: '+c.note+'.\nModel pair: Turkish "'+c.tr+'" = English "'+c.en+'".\nWrite 8 NEW everyday sentence pairs that clearly use exactly this structure. Make them different from each other: different subjects, verbs and situations (work, home, travel, friends, shopping, health). Natural spoken English at B1 level, 5-14 words each. Do not reuse these sentences: '+JSON.stringify(used.slice(-15))+'.\nReply with ONLY a JSON object: {"examples":[{"tr":"Turkish sentence","en":"English sentence"}]}');
-      if(my!==idx)return false;
-      (Array.isArray(r&&r.examples)?r.examples:[]).forEach(x=>{
-        if(x&&x.tr&&x.en&&!used.includes(String(x.en))){used.push(String(x.en));queue.push({tr:String(x.tr).slice(0,200),en:String(x.en).slice(0,200)});}
-      });
+      for(let attempt=0;attempt<2&&queue.length<8;attempt++){
+        const sc=shuf(SCEN).slice(0,12);
+        const r=await s.json('You are an English teacher. A Turkish B1 learner is practising ONE speaking structure.\nStructure: "'+c.title+'" (rule: '+c.formula+'). When used: '+c.note+'.\nModel pair: Turkish "'+c.tr+'" = English "'+c.en+'".\nWrite 12 NEW sentence pairs that clearly use exactly this structure. They must be truly different from each other: sentence number k must be set in scenario k from this list: '+JSON.stringify(sc)+'. Use a different subject (I, you, he, she, we, they, a name or a noun) and a different main verb or adjective in every sentence; do not just swap one word. Natural spoken English at B1 level, 5-14 words each. Do not reuse or paraphrase these sentences: '+JSON.stringify(used.slice(-30))+'.\nReply with ONLY a JSON object: {"examples":[{"tr":"Turkish sentence","en":"English sentence"}]}');
+        if(my!==idx)return false;
+        (Array.isArray(r&&r.examples)?r.examples:[]).forEach(x=>{
+          const en=String(x&&x.en||'').slice(0,200),tr=String(x&&x.tr||'').slice(0,200);
+          if(en&&tr&&!used.some(u=>similar(u,en))){used.push(en);queue.push({tr,en});}
+        });
+      }
       return queue.length>0;
-    }catch(e){lastErr=e;return false;}
+    }catch(e){lastErr=e;return queue.length>0;}
     finally{fetchP=null;}
   })();
   return fetchP;
