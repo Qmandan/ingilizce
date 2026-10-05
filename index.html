@@ -444,6 +444,13 @@ button:disabled{opacity:.5;cursor:not-allowed}
                         <p id="pt-formula" class="hidden mt-2 inline-block text-xs font-mono font-semibold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1"></p>
                         <p id="pt-note" class="text-xs sm:text-sm text-slate-600 mt-2"></p>
                     </div>
+                    <div id="pt-explain" class="mt-4 rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                        <button type="button" id="pt-exp-toggle" class="w-full flex items-center justify-between px-4 py-3 text-left bg-slate-50 hover:bg-slate-100 transition">
+                            <span class="text-sm font-bold text-slate-800">📖 Yapıyı öğren</span>
+                            <span id="pt-exp-arrow" class="text-slate-400 text-xs">▲</span>
+                        </button>
+                        <div id="pt-exp-body" class="p-4 space-y-3 text-sm text-slate-700"></div>
+                    </div>
                     <div class="mt-4 rounded-2xl p-4 border border-slate-200 bg-white">
                         <p class="text-xs font-semibold text-slate-500 mb-1">Bu cümleyi İngilizceye çevirin <span id="pt-exno" class="text-slate-400"></span></p>
                         <p id="pt-tr" class="text-xl sm:text-2xl font-bold text-slate-800 leading-snug" style="font-family:'Fraunces',Georgia,serif"></p>
@@ -3025,7 +3032,7 @@ function openStruct(i){
   queue=[];used=[c.en];exNo=0;ok=0;tot=0;lastErr=null;
   $('pt-score').classList.add('hidden');$('pt-status').textContent='';
   setExercise({tr:c.tr,en:c.en});
-  fill();
+  loadExplain();
 }
 function setExercise(ex){
   cur=ex;answered=false;exNo++;
@@ -3086,6 +3093,7 @@ async function check(){
   if(!r){r={correct:norm(user)===norm(cur.en),uses:true,corrected:'',tip:'',mistakes:[],local:true};}
   if(first){tot++;if(r.correct)ok++;const sc=$('pt-score');sc.textContent='Bu yapı: '+ok+' / '+tot+' doğru';sc.classList.remove('hidden');}
   render(r,note);
+  if(first&&!queue.length)fill();
 }
 function render(r,note){
   const good=r.correct&&r.uses,warn=r.correct&&!r.uses;
@@ -3107,6 +3115,46 @@ function say(){
   if(!cur||!window.speechSynthesis)return;
   speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(cur.en);u.lang='en-US';u.rate=.9;speechSynthesis.speak(u);
+}
+// Yapı açıklaması
+let exp={},expOpen=true;
+try{exp=JSON.parse(localStorage.getItem('ptExp')||'{}')||{};}catch(e){exp={};}
+const ekey=c=>c.no+'|'+c.title.slice(0,40);
+function setExp(o){expOpen=o;$('pt-exp-body').classList.toggle('hidden',!o);$('pt-exp-arrow').textContent=o?'▲':'▼';}
+function renderExplain(d){
+  const sec=(cls,title,body)=>'<div class="rounded-xl border p-3 '+cls+'"><p class="text-xs font-bold mb-1.5">'+title+'</p>'+body+'</div>';
+  let h='<p class="text-base text-slate-800 leading-relaxed">'+esc(d.summary)+'</p>';
+  if(d.how)h+=sec('bg-amber-50 border-amber-200 text-amber-900','🧩 Nasıl kurulur?','<p class="text-sm text-slate-800">'+esc(d.how)+'</p>');
+  if(d.examples.length)h+=sec('bg-indigo-50 border-indigo-100 text-indigo-800','💬 Örnekler','<ul class="space-y-2">'+d.examples.map(x=>'<li><span class="font-semibold text-slate-800" style="'+SERIF+'">'+esc(x.en)+'</span><br><span class="text-xs text-slate-600">'+esc(x.tr)+'</span>'+(x.note?'<br><span class="text-xs text-indigo-700">'+esc(x.note)+'</span>':'')+'</li>').join('')+'</ul>');
+  if(d.mistakes.length)h+=sec('bg-rose-50 border-rose-200 text-rose-800','⚠ Sık yapılan hatalar','<ul class="space-y-2">'+d.mistakes.map(m=>'<li class="text-sm"><span class="line-through text-rose-600">'+esc(m.wrong)+'</span> → <span class="font-semibold text-emerald-700">'+esc(m.right)+'</span>'+(m.why?'<br><span class="text-xs text-slate-600">'+esc(m.why)+'</span>':'')+'</li>').join('')+'</ul>');
+  if(d.tip)h+='<p class="text-sm text-slate-700">💡 '+esc(d.tip)+'</p>';
+  return h;
+}
+async function loadExplain(){
+  const c=cards[idx],my=idx,body=$('pt-exp-body');
+  setExp(true);
+  const hit=exp[ekey(c)];
+  if(hit){body.innerHTML=renderExplain(hit);return;}
+  const note=t=>'<p class="text-xs text-slate-500">'+t+'</p>';
+  body.innerHTML=(c.tip?'<p class="text-sm text-slate-700">💡 '+esc(c.tip)+'</p>':'');
+  if(!navigator.onLine||typeof samplePromise==='undefined'){body.insertAdjacentHTML('beforeend',note('Ayrıntılı anlatım için internet gerekir. Kural ve kullanım yukarıda.'));return;}
+  body.insertAdjacentHTML('beforeend','<p class="text-xs text-slate-500 animate-pulse">Ayrıntılı anlatım hazırlanıyor…</p>');
+  try{
+    const s=await samplePromise;
+    const j=await s.json('You are an excellent English teacher for Turkish speakers at B1 level. Explain ONE speaking structure so that the learner truly understands it.\nStructure: "'+c.title+'" (rule: '+c.formula+'). When used: '+c.note+'. Teacher note: '+c.tip+'.\nWrite the explanation in simple, friendly Turkish (English only for the example sentences). Do not use the sentence "'+c.en+'" in your examples.\nReply with ONLY a JSON object: {"summary":"1-2 sentences: what this structure does and why it is useful when speaking","how":"how to build it step by step, short, showing the pattern with a tiny example","examples":[{"en":"English sentence","tr":"Turkish translation","note":"short Turkish note pointing out the structure part, or an empty string"}],"mistakes":[{"wrong":"typical wrong sentence by Turkish learners","right":"corrected sentence","why":"short Turkish reason, often linked to Turkish word order or word-for-word translation"}],"tip":"one memorable speaking tip or memory trick in Turkish"}\nGive exactly 3 examples (everyday spoken English, different situations) and 2 common mistakes.');
+    const t=(x,n)=>String(x==null?'':x).slice(0,n);
+    const d={summary:t(j&&j.summary,400),how:t(j&&j.how,500),tip:t(j&&j.tip,300),
+      examples:(Array.isArray(j&&j.examples)?j.examples:[]).slice(0,4).map(x=>({en:t(x&&x.en,160),tr:t(x&&x.tr,160),note:t(x&&x.note,200)})).filter(x=>x.en),
+      mistakes:(Array.isArray(j&&j.mistakes)?j.mistakes:[]).slice(0,3).map(m=>({wrong:t(m&&m.wrong,160),right:t(m&&m.right,160),why:t(m&&m.why,250)})).filter(m=>m.wrong&&m.right)};
+    if(!d.summary||!d.examples.length)throw 0;
+    exp[ekey(c)]=d;
+    try{localStorage.setItem('ptExp',JSON.stringify(exp));}catch(e){}
+    if(my===idx)body.innerHTML=renderExplain(d);
+  }catch(e){
+    if(my!==idx)return;
+    const msg=(e&&e.code&&typeof aiErrorMessage==='function')?aiErrorMessage(e):'Ayrıntılı anlatım hazırlanamadı.';
+    body.innerHTML=(c.tip?'<p class="text-sm text-slate-700">💡 '+esc(c.tip)+'</p>':'')+note(esc(msg)+' <button type="button" id="pt-exp-retry" class="font-semibold text-indigo-600 hover:underline">Tekrar dene</button>');
+  }
 }
 // Sesle cevap (isteğe bağlı)
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -3131,6 +3179,8 @@ function ingest(buf){
   let i=0;try{i=parseInt(localStorage.getItem('ptIdx')||'0',10)||0;}catch(e){}
   openStruct(i<cards.length?i:0);
 }
+$('pt-exp-toggle').addEventListener('click',()=>setExp(!expOpen));
+$('pt-exp-body').addEventListener('click',e=>{if(e.target.closest('#pt-exp-retry'))loadExplain();});
 $('pt-struct').addEventListener('change',e=>openStruct(parseInt(e.target.value,10)));
 $('pt-nextstruct').addEventListener('click',()=>openStruct(idx+1));
 $('pt-more').addEventListener('click',more);
