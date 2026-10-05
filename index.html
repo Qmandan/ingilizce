@@ -428,12 +428,17 @@ button:disabled{opacity:.5;cursor:not-allowed}
                     Konuşma Yapıları Çalışması
                     <span id="pt-score" class="hidden ml-auto text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1"></span>
                 </h3>
-                <p class="text-xs sm:text-sm text-slate-500 mb-4">Türkçe cümleyi İngilizceye çevirerek temel kalıpları, soru kelimelerini ve bağlaçları çalışın. Yazdıkça yapılar oturur, konuşurken ve yazarken kendiliğinden gelir. Aynı kalıpla yeni cümleler için yapay zekâyı kullanabilirsiniz.</p>
+                <p class="text-xs sm:text-sm text-slate-500 mb-4">Kalıpları üç farklı alıştırmayla pekiştirin. Yanlış yaptığınız yapılar daha sık gelir, üst üste 3 kez doğru bildikleriniz "pekişti" sayılır ve nadiren sorulur.</p>
                 <p id="pt-empty" class="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3">Çalışmak için Konuşma Rehberi Excel dosyasını yükleyin: <button type="button" id="pt-upload" class="font-semibold text-indigo-600 hover:underline">Dosya seç</button><input type="file" id="pt-file" accept=".xlsx,.xls,.csv" class="hidden"></p>
-                <div id="pt-tabs" class="flex flex-wrap gap-2 mb-4"></div>
-                <div id="pt-group-row" class="hidden mb-4">
+                <div id="pt-tabs" class="flex flex-wrap gap-2 mb-3"></div>
+                <div id="pt-group-row" class="hidden mb-3">
                     <label for="pt-group" class="block text-xs font-semibold text-slate-700 mb-1">Kategori</label>
                     <select id="pt-group" class="p-2.5 border border-slate-200 rounded-xl bg-white text-sm text-slate-800 max-w-full"></select>
+                </div>
+                <div id="pt-modes" class="hidden flex flex-wrap gap-2 mb-4"></div>
+                <div id="pt-prog" class="hidden mb-4">
+                    <div class="flex justify-between text-xs text-slate-500 mb-1"><span id="pt-prog-text"></span><button type="button" id="pt-reset" class="hover:underline">İlerlemeyi sıfırla</button></div>
+                    <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div id="pt-prog-bar" class="h-full bg-emerald-500 rounded-full" style="width:0%"></div></div>
                 </div>
                 <div id="pt-box" class="hidden">
                     <div class="rounded-2xl p-4 sm:p-5 border border-indigo-100" style="background:linear-gradient(135deg,#f4f1ff,#fff8ec)">
@@ -442,10 +447,15 @@ button:disabled{opacity:.5;cursor:not-allowed}
                         <p id="pt-tr" class="text-xl sm:text-2xl font-bold text-slate-800 leading-snug" style="font-family:'Fraunces',Georgia,serif"></p>
                     </div>
                     <input type="text" id="pt-input" autocomplete="off" autocapitalize="none" spellcheck="false" class="w-full mt-4 p-3.5 border border-slate-200 rounded-xl bg-white text-base text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="İngilizcesini yazın...">
+                    <div id="pt-order" class="hidden mt-4">
+                        <div id="pt-answer" class="flex flex-wrap gap-2 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50" style="min-height:3.25rem"></div>
+                        <div id="pt-bank" class="flex flex-wrap gap-2 mt-3"></div>
+                    </div>
+                    <div id="pt-choices" class="hidden mt-4 grid gap-2"></div>
                     <button type="button" id="pt-check" class="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md transition">Kontrol Et</button>
                     <div id="pt-result" class="mt-3"></div>
                     <div class="flex flex-wrap gap-2 mt-3">
-                        <button type="button" id="pt-next" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 px-5 rounded-xl text-sm transition">Sonraki Cümle</button>
+                        <button type="button" id="pt-next" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 px-5 rounded-xl text-sm transition">Sonraki</button>
                         <button type="button" id="pt-ai" class="py-2.5 px-4 rounded-xl text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200">✨ Aynı yapıyla yeni cümle</button>
                         <button type="button" id="pt-say" class="py-2.5 px-4 rounded-xl text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200" title="Doğru cümleyi dinle">🔊 Dinle</button>
                     </div>
@@ -2974,71 +2984,148 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const fold=v=>String(v==null?'':v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const norm=s=>String(s).toLowerCase().replace(/[’‘`]/g,"'").replace(/\bwon't\b/g,'will not').replace(/\bcan't\b/g,'cannot').replace(/n't\b/g,' not').replace(/\b(it|he|she|that|there|what|who|here)'s\b/g,'$1 is').replace(/'m\b/g,' am').replace(/'re\b/g,' are').replace(/'ve\b/g,' have').replace(/'ll\b/g,' will').replace(/\bcan not\b/g,'cannot').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
 const ON='py-2 px-4 rounded-xl text-sm font-medium transition bg-indigo-600 text-white',OFF='py-2 px-4 rounded-xl text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200';
-let cards=[],cur=null,checked=false,ok=0,tot=0,sheet='';
+const SRC=[['yapilar.xlsx',''],['yapilar-b1.xlsx','B1 Konuşma Yapıları']];
+const MODES=[['tr','✍ Çeviri'],['ord','🔀 Sıralama'],['rec','🎯 Yapıyı tanı']];
+let cards=[],cur=null,answered=false,ok=0,tot=0,sheet='',mode='tr',order={bank:[],ans:[]},prog={};
+try{prog=JSON.parse(localStorage.getItem('ptProg')||'{}')||{};}catch(e){prog={};}
+const saveProg=()=>{try{localStorage.setItem('ptProg',JSON.stringify(prog));}catch(e){}};
+const key=c=>c.sheet+'|'+c.en;
+const shuf=a=>a.slice().sort(()=>Math.random()-.5);
 
-function parse(wb){
-  cards=[];
+function parse(wb,label){
   wb.SheetNames.forEach(n=>{
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''});
     if(rows.length<2)return;
     const h=rows[0].map(fold),f=re=>h.findIndex(x=>re.test(x));
-    const c={tr:f(/turkce cumle|\(tr\)|turkce kar/),en:f(/ingilizce kar|ingilizce ornek/),title:f(/zaman|kip|soru kelimesi|kelime \/ kal/),formula:f(/formul|kural/),note:f(/islev|ac.klama/),tip:f(/ipucu|notlar/),group:f(/kategori|cat./)};
+    const c={tr:f(/turkce cumle|\(tr\)|turkce kar|turkcesi/),en:f(/ingilizce kar|ingilizce ornek/),title:f(/zaman|kip|soru kelimesi|kelime \/ kal|yap. \/ kal/),formula:f(/formul|kural/),note:f(/islev|ac.klama|ne zaman/),tip:f(/ipucu|notlar|konusma not/),group:f(/kategori|cat./)};
     if(c.tr<0||c.en<0)return;
+    const name=(wb.SheetNames.length===1||/^(sheet|sayfa)\s*\d*$/i.test(n))?(label||n):n;
     const g=(r,i)=>i<0||r[i]==null?'':String(r[i]).trim();
     rows.slice(1).forEach(r=>{
       const tr=g(r,c.tr),en=g(r,c.en);
-      if(!tr||!en)return;
-      cards.push({sheet:n,group:g(r,c.group),title:g(r,c.title),formula:g(r,c.formula),note:g(r,c.note),tip:g(r,c.tip),tr,en});
+      if(!tr||!en||cards.some(x=>x.sheet===name&&x.en===en))return;
+      cards.push({sheet:name,group:g(r,c.group),title:g(r,c.title),formula:g(r,c.formula),note:g(r,c.note),tip:g(r,c.tip),tr,en});
     });
   });
 }
+const inSheet=()=>cards.filter(x=>x.sheet===sheet);
+const pool=()=>inSheet().filter(x=>!$('pt-group').value||x.group===$('pt-group').value);
 function renderTabs(){
-  const names=[...new Set(cards.map(x=>x.sheet))];
   $('pt-tabs').innerHTML='';
-  names.forEach(n=>{
+  [...new Set(cards.map(x=>x.sheet))].forEach(n=>{
     const b=document.createElement('button');
     b.type='button';b.textContent=n;b.className=n===sheet?ON:OFF;
-    b.addEventListener('click',()=>{sheet=n;renderTabs();fillGroups();next();});
+    b.addEventListener('click',()=>{sheet=n;renderTabs();fillGroups();updateProg();next();});
     $('pt-tabs').appendChild(b);
   });
 }
+function renderModes(){
+  const box=$('pt-modes');box.innerHTML='';box.classList.remove('hidden');
+  MODES.forEach(([m,t])=>{
+    const b=document.createElement('button');
+    b.type='button';b.textContent=t;b.className=m===mode?ON:OFF;
+    b.addEventListener('click',()=>{mode=m;renderModes();next();});
+    box.appendChild(b);
+  });
+}
 function fillGroups(){
-  const gs=[...new Set(cards.filter(x=>x.sheet===sheet).map(x=>x.group).filter(Boolean))];
+  const gs=[...new Set(inSheet().map(x=>x.group).filter(Boolean))];
   $('pt-group').innerHTML='<option value="">Hepsi</option>'+gs.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
   $('pt-group-row').classList.toggle('hidden',gs.length<2);
 }
-const pool=()=>cards.filter(x=>x.sheet===sheet&&(!$('pt-group').value||x.group===$('pt-group').value));
-function show(c){
-  cur=c;checked=false;
-  $('pt-box').classList.remove('hidden');
-  $('pt-title').textContent=c.title||c.sheet;
-  $('pt-note').textContent=c.note;
-  $('pt-note').classList.toggle('hidden',!c.note);
-  $('pt-tr').textContent=c.tr;
-  $('pt-input').value='';
-  $('pt-result').innerHTML='';
-  $('pt-input').focus({preventScroll:true});
+function updateProg(){
+  const l=pool(),m=l.filter(x=>(prog[key(x)]||{}).c>=3).length;
+  $('pt-prog').classList.toggle('hidden',!l.length);
+  $('pt-prog-text').textContent='Pekişen yapı: '+m+' / '+l.length;
+  $('pt-prog-bar').style.width=(l.length?Math.round(m*100/l.length):0)+'%';
 }
+function mark(c,good){
+  if(c.ai)return;
+  const p=prog[key(c)]||(prog[key(c)]={c:0,w:0});
+  if(good)p.c++;else{p.c=0;p.w++;}
+  saveProg();updateProg();
+}
+const weight=c=>{const p=prog[key(c)];return !p?3:p.c===0?5:Math.max(.4,3-p.c);};
 function next(){
-  const p=pool();if(!p.length)return;
-  let c=p[Math.floor(Math.random()*p.length)];
-  if(p.length>1)while(c===cur||(cur&&c.tr===cur.tr))c=p[Math.floor(Math.random()*p.length)];
+  const l=pool().filter(x=>x!==cur);
+  const all=l.length?l:pool();
+  if(!all.length)return;
+  let r=Math.random()*all.reduce((a,x)=>a+weight(x),0),c=all[all.length-1];
+  for(const x of all){r-=weight(x);if(r<=0){c=x;break;}}
   show(c);
 }
+function show(c){
+  cur=c;answered=false;
+  const rec=mode==='rec';
+  $('pt-box').classList.remove('hidden');
+  $('pt-title').textContent=c.title||c.sheet;
+  $('pt-title').classList.toggle('hidden',rec);
+  const note=rec?'Bu cümle hangi yapıyı kullanıyor?':c.note;
+  $('pt-note').textContent=note;$('pt-note').classList.toggle('hidden',!note);
+  $('pt-tr').textContent=rec?c.en:c.tr;
+  $('pt-input').classList.toggle('hidden',mode!=='tr');
+  $('pt-order').classList.toggle('hidden',mode!=='ord');
+  $('pt-choices').classList.toggle('hidden',!rec);
+  $('pt-check').classList.toggle('hidden',rec);
+  $('pt-result').innerHTML='';
+  if(mode==='tr'){$('pt-input').value='';$('pt-input').focus({preventScroll:true});}
+  if(mode==='ord'){const t=c.en.trim().split(/\s+/).map((w,i)=>({i,w}));let b=shuf(t);if(t.length>1&&b.every((x,j)=>x.i===j))b.reverse();order={bank:b,ans:[]};drawOrder();}
+  if(rec)drawChoices();
+}
+function drawOrder(){
+  const A=$('pt-answer'),B=$('pt-bank');A.innerHTML='';B.innerHTML='';
+  const mk=(x,fromBank)=>{
+    const b=document.createElement('button');
+    b.type='button';b.textContent=x.w;
+    b.className='px-3 py-1.5 rounded-xl text-sm font-medium border '+(fromBank?'bg-white border-slate-200 text-slate-700 hover:bg-slate-100':'bg-indigo-50 border-indigo-200 text-indigo-800');
+    b.addEventListener('click',()=>{
+      if(answered)return;
+      if(fromBank){order.bank=order.bank.filter(y=>y!==x);order.ans.push(x);}
+      else{order.ans=order.ans.filter(y=>y!==x);order.bank.push(x);}
+      drawOrder();
+    });
+    return b;
+  };
+  if(!order.ans.length)A.innerHTML='<span class="text-xs text-slate-400">Kelimelere dokunarak cümleyi kurun</span>';
+  order.ans.forEach(x=>A.appendChild(mk(x,false)));
+  order.bank.forEach(x=>B.appendChild(mk(x,true)));
+}
+function drawChoices(){
+  const others=shuf([...new Set(inSheet().map(x=>x.title).filter(t=>t&&t!==cur.title))]).slice(0,3);
+  const box=$('pt-choices');box.innerHTML='';
+  shuf(others.concat(cur.title)).forEach(t=>{
+    const b=document.createElement('button');
+    b.type='button';b.textContent=t;
+    b.className='text-left p-3 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition';
+    b.addEventListener('click',()=>{
+      if(answered)return;
+      box.querySelectorAll('button').forEach(x=>{
+        if(x.textContent===cur.title)x.className='text-left p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-sm font-semibold text-emerald-800';
+        else if(x===b)x.className='text-left p-3 rounded-xl border border-rose-300 bg-rose-50 text-sm font-semibold text-rose-800';
+      });
+      finish(t===cur.title);
+    });
+    box.appendChild(b);
+  });
+}
 function check(){
-  if(!cur)return;
-  const v=$('pt-input').value;
+  if(!cur||answered)return;
+  const v=mode==='ord'?order.ans.map(x=>x.w).join(' '):$('pt-input').value;
   if(!v.trim())return;
-  checked=true;tot++;
-  const good=norm(v)===norm(cur.en);
-  if(good)ok++;
+  finish(norm(v)===norm(cur.en));
+}
+function finish(good){
+  answered=true;tot++;if(good)ok++;mark(cur,good);
   const sc=$('pt-score');sc.textContent='Skor '+ok+' / '+tot;sc.classList.remove('hidden');
+  const rec=mode==='rec';
   $('pt-result').innerHTML=
     '<div class="rounded-2xl p-4 border '+(good?'bg-emerald-50 border-emerald-200':'bg-rose-50 border-rose-200')+'">'+
-    '<p class="text-sm font-bold '+(good?'text-emerald-700':'text-rose-700')+'">'+(good?'✓ Harika, doğru!':'✗ Doğru cümle')+'</p>'+
+    '<p class="text-sm font-bold '+(good?'text-emerald-700':'text-rose-700')+'">'+(good?'✓ Harika, doğru!':(rec?'✗ Doğru yapı: '+esc(cur.title):'✗ Doğru cümle'))+'</p>'+
     '<p class="text-lg font-semibold text-slate-800 mt-1" style="font-family:\'Fraunces\',Georgia,serif">'+esc(cur.en)+'</p>'+
-    (good?'':'<p class="text-xs text-slate-500 mt-1">Cevabınız farklı ama anlamca doğru olabilir; karşılaştırın.</p>')+
+    (rec?'<p class="text-sm text-slate-600 mt-1">'+esc(cur.tr)+'</p>':'')+
+    (!good&&mode==='tr'?'<p class="text-xs text-slate-500 mt-1">Cevabınız farklı ama anlamca doğru olabilir; karşılaştırın.</p>':'')+
     (cur.formula?'<p class="mt-2"><span class="inline-block text-xs font-mono font-semibold text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-2.5 py-1">'+esc(cur.formula)+'</span></p>':'')+
+    (rec&&cur.note?'<p class="text-xs text-slate-600 mt-2">📌 '+esc(cur.note)+'</p>':'')+
     (cur.tip?'<p class="text-xs text-slate-600 mt-2">💡 '+esc(cur.tip)+'</p>':'')+
     '</div>';
 }
@@ -3052,33 +3139,37 @@ async function ai(){
   const st=$('pt-status');st.textContent='Yapay zekâ yeni cümle hazırlıyor…';
   try{
     const s=await samplePromise;
-    const r=await s.json('You are an English teacher. Grammar structure: "'+cur.title+'"'+(cur.formula?' (formula: '+cur.formula+')':'')+'. Example pair: Turkish "'+cur.tr+'" = English "'+cur.en+'".\nWrite ONE new everyday sentence pair that uses exactly the same structure but a different subject and verb (not about washing a car). Reply with ONLY a JSON object: {"tr":"Turkish sentence","en":"English sentence"}');
+    const r=await s.json('You are an English teacher. Grammar structure: "'+cur.title+'"'+(cur.formula?' (formula: '+cur.formula+')':'')+'. Example pair: Turkish "'+cur.tr+'" = English "'+cur.en+'".\nWrite ONE new everyday sentence pair that uses exactly the same structure but a different subject and verb. Reply with ONLY a JSON object: {"tr":"Turkish sentence","en":"English sentence"}');
     if(!r||!r.tr||!r.en)throw 0;
-    show(Object.assign({},cur,{tr:String(r.tr).slice(0,200),en:String(r.en).slice(0,200)}));
+    show(Object.assign({},cur,{tr:String(r.tr).slice(0,200),en:String(r.en).slice(0,200),ai:true}));
     st.textContent='';
   }catch(e){st.textContent=(e&&e.code&&typeof aiErrorMessage==='function')?aiErrorMessage(e):'Yeni cümle üretilemedi.';}
 }
-function ingest(buf){
-  if(typeof XLSX==='undefined'){$('pt-status').textContent='Excel okuyucu yüklenemedi.';return;}
-  try{
-    parse(XLSX.read(buf,{type:'array'}));
-    if(!cards.length){$('pt-status').textContent='Dosyada Türkçe/İngilizce cümle sütunları bulunamadı.';return;}
-    sheet=cards[0].sheet;ok=0;tot=0;
-    $('pt-score').classList.add('hidden');
-    $('pt-empty').classList.add('hidden');
-    $('pt-status').textContent='';
-    renderTabs();fillGroups();next();
-  }catch(e){$('pt-status').textContent='Dosya okunamadı.';}
+function ready(){
+  if(!cards.length){$('pt-status').textContent='Dosyada Türkçe/İngilizce cümle sütunları bulunamadı.';return;}
+  if(!cards.some(x=>x.sheet===sheet))sheet=cards[0].sheet;
+  $('pt-empty').classList.add('hidden');$('pt-status').textContent='';
+  renderTabs();fillGroups();renderModes();updateProg();next();
 }
-$('pt-group').addEventListener('change',next);
+function ingest(buf,label){
+  if(typeof XLSX==='undefined'){$('pt-status').textContent='Excel okuyucu yüklenemedi.';return;}
+  try{parse(XLSX.read(buf,{type:'array'}),label);ready();}
+  catch(e){$('pt-status').textContent='Dosya okunamadı.';}
+}
+$('pt-group').addEventListener('change',()=>{updateProg();next();});
 $('pt-next').addEventListener('click',next);
 $('pt-check').addEventListener('click',check);
 $('pt-ai').addEventListener('click',ai);
 $('pt-say').addEventListener('click',say);
-$('pt-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checked?next():check();}});
+$('pt-reset').addEventListener('click',()=>{if(confirm('Pekiştirme ilerlemesi sıfırlansın mı?')){prog={};saveProg();updateProg();}});
+$('pt-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();answered?next():check();}});
 $('pt-upload').addEventListener('click',()=>$('pt-file').click());
-$('pt-file').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(f)ingest(await f.arrayBuffer());});
-if(/^https?:$/.test(location.protocol))fetch('yapilar.xlsx').then(r=>r.ok?r.arrayBuffer():null).then(b=>{if(b)ingest(b);}).catch(()=>{});
+$('pt-file').addEventListener('change',async e=>{const f=e.target.files[0];e.target.value='';if(f)ingest(await f.arrayBuffer(),f.name.replace(/\.[^.]+$/,''));});
+if(/^https?:$/.test(location.protocol))Promise.all(SRC.map(([f,l])=>fetch(f).then(r=>r.ok?r.arrayBuffer():null).then(b=>b&&{b,l}).catch(()=>null))).then(list=>{
+  if(typeof XLSX==='undefined')return;
+  list.forEach(x=>{if(x){try{parse(XLSX.read(x.b,{type:'array'}),x.l);}catch(e){}}});
+  if(cards.length)ready();
+});
 })();
 </script>
 <script>

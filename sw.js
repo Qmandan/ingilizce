@@ -1,4 +1,4 @@
-const V='aiet-v4';
+const V='aiet-v5';
 const FONTS='https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
 const PRE=['https://cdn.tailwindcss.com','https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'];
 const CDN=['cdn.tailwindcss.com','cdnjs.cloudflare.com','fonts.googleapis.com','fonts.gstatic.com'];
@@ -7,7 +7,7 @@ self.addEventListener('install',e=>{
   self.skipWaiting();
   e.waitUntil((async()=>{
     const c=await caches.open(V);
-    await Promise.allSettled(['./','./index.html','./library.json','./manifest.webmanifest','./icon-192.png','./icon-512.png','./kelimeler.xlsx','./yapilar.xlsx'].map(u=>c.add(u)));
+    await Promise.allSettled(['./','./index.html','./library.json','./manifest.webmanifest','./icon-192.png','./icon-512.png','./kelimeler.xlsx','./yapilar.xlsx','./yapilar-b1.xlsx'].map(u=>c.add(u)));
     await Promise.allSettled(PRE.map(async u=>{const q=new Request(u,{mode:'no-cors'});c.put(q,await fetch(q));}));
     try{
       const r=await fetch(FONTS);const css=await r.clone().text();await c.put(FONTS,r);
