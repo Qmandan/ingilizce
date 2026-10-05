@@ -433,6 +433,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
                 <div id="pt-pick" class="hidden mb-4">
                     <label for="pt-struct" class="block text-xs font-semibold text-slate-700 mb-1">Yapı</label>
                     <select id="pt-struct" class="w-full p-2.5 border border-slate-200 rounded-xl bg-white text-sm text-slate-800"></select>
+                    <label class="flex items-start gap-2 mt-3 text-xs text-slate-600 cursor-pointer"><input type="checkbox" id="pt-save" class="mt-0.5" checked><span><b>💰 Yapay zekâ tasarruf modu</b> — anlatım ve hata açıklaması yalnızca siz isteyince hazırlanır. Cevabınız örnekle birebir aynıysa hiç istek harcanmaz.</span></label>
                 </div>
                 <div id="pt-box" class="hidden">
                     <div class="rounded-2xl p-4 sm:p-5 border border-indigo-100" style="background:linear-gradient(135deg,#f4f1ff,#fff8ec)">
@@ -2992,6 +2993,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const fold=v=>String(v==null?'':v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const norm=s=>String(s).toLowerCase().replace(/[’‘`]/g,"'").replace(/\bwon't\b/g,'will not').replace(/\bcan't\b/g,'cannot').replace(/n't\b/g,' not').replace(/\b(it|he|she|that|there|what|who|here)'s\b/g,'$1 is').replace(/'m\b/g,' am').replace(/'re\b/g,' are').replace(/'ve\b/g,' have').replace(/'ll\b/g,' will').replace(/\bcan not\b/g,'cannot').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
 const SERIF="font-family:'Fraunces',Georgia,serif";
+let saveMode=true;try{saveMode=localStorage.getItem('ptSave')!=='0';}catch(e){}
 let cards=[],idx=0,cur=null,queue=[],used=[],fetchP=null,lastErr=null,answered=false,exNo=0,ok=0,tot=0,busy=false;
 
 function parse(wb){
@@ -3049,7 +3051,7 @@ function fill(){
   fetchP=(async()=>{
     try{
       const s=await samplePromise;
-      const r=await s.json('You are an English teacher. A Turkish B1 learner is practising ONE speaking structure.\nStructure: "'+c.title+'" (rule: '+c.formula+'). When used: '+c.note+'.\nModel pair: Turkish "'+c.tr+'" = English "'+c.en+'".\nWrite 5 NEW everyday sentence pairs that clearly use exactly this structure. Make them different from each other: different subjects, verbs and situations (work, home, travel, friends, shopping, health). Natural spoken English at B1 level, 5-14 words each. Do not reuse these sentences: '+JSON.stringify(used.slice(-15))+'.\nReply with ONLY a JSON object: {"examples":[{"tr":"Turkish sentence","en":"English sentence"}]}');
+      const r=await s.json('You are an English teacher. A Turkish B1 learner is practising ONE speaking structure.\nStructure: "'+c.title+'" (rule: '+c.formula+'). When used: '+c.note+'.\nModel pair: Turkish "'+c.tr+'" = English "'+c.en+'".\nWrite 8 NEW everyday sentence pairs that clearly use exactly this structure. Make them different from each other: different subjects, verbs and situations (work, home, travel, friends, shopping, health). Natural spoken English at B1 level, 5-14 words each. Do not reuse these sentences: '+JSON.stringify(used.slice(-15))+'.\nReply with ONLY a JSON object: {"examples":[{"tr":"Turkish sentence","en":"English sentence"}]}');
       if(my!==idx)return false;
       (Array.isArray(r&&r.examples)?r.examples:[]).forEach(x=>{
         if(x&&x.tr&&x.en&&!used.includes(String(x.en))){used.push(String(x.en));queue.push({tr:String(x.tr).slice(0,200),en:String(x.en).slice(0,200)});}
@@ -3071,16 +3073,17 @@ async function more(){
   }
   if(!queue.length){st.textContent=(lastErr&&lastErr.code&&typeof aiErrorMessage==='function')?aiErrorMessage(lastErr):'Yeni örnek üretilemedi. Tekrar deneyin.';return;}
   setExercise(queue.shift());
-  if(queue.length<2)fill();
+  if(!saveMode&&queue.length<2)fill();
 }
-async function check(){
+async function check(force){
   if(!cur||busy)return;
   const user=$('pt-input').value.trim();
   if(!user)return;
   const first=!answered;answered=true;
   const c=cards[idx];
   let r=null,note='';
-  if(navigator.onLine&&typeof samplePromise!=='undefined'){
+  if(norm(user)===norm(cur.en)){r={correct:true,uses:true,corrected:'',tip:'',mistakes:[],local:true};}
+  else if((force===true||!saveMode)&&navigator.onLine&&typeof samplePromise!=='undefined'){
     busy=true;const b=$('pt-check');b.textContent='Kontrol ediliyor…';b.disabled=true;
     try{
       const s=await samplePromise;
@@ -3089,11 +3092,13 @@ async function check(){
       r={correct:j.correct,uses:j.uses_structure!==false,corrected:String(j.corrected||'').slice(0,250),tip:String(j.tip||'').slice(0,250),mistakes:(Array.isArray(j.mistakes)?j.mistakes:[]).slice(0,6).map(m=>({wrong:String(m.wrong||'').slice(0,120),right:String(m.right||'').slice(0,120),why:String(m.why||'').slice(0,250)}))};
     }catch(e){note=(e&&e.code&&typeof aiErrorMessage==='function')?aiErrorMessage(e):'Yapay zekâ analizi yapılamadı.';}
     finally{busy=false;b.textContent='Kontrol Et';b.disabled=false;}
-  }else note='İnternet yok: hatalar ayrıntılı gösterilemiyor.';
+  }else if(!navigator.onLine)note='İnternet yok: hatalar ayrıntılı gösterilemiyor.';
   if(!r){r={correct:norm(user)===norm(cur.en),uses:true,corrected:'',tip:'',mistakes:[],local:true};}
-  if(first){tot++;if(r.correct)ok++;const sc=$('pt-score');sc.textContent='Bu yapı: '+ok+' / '+tot+' doğru';sc.classList.remove('hidden');}
+  if(first)tot++;
+  if(r.correct&&!cur.okd){cur.okd=true;ok++;}
+  {const sc=$('pt-score');sc.textContent='Bu yapı: '+ok+' / '+tot+' doğru';sc.classList.remove('hidden');}
   render(r,note);
-  if(first&&!queue.length)fill();
+  if(first&&!saveMode&&!queue.length)fill();
 }
 function render(r,note){
   const good=r.correct&&r.uses,warn=r.correct&&!r.uses;
@@ -3108,6 +3113,7 @@ function render(r,note){
   if(r.local&&!r.correct)h+='<p class="text-xs text-slate-500 mt-1">Cevabınız örnekten farklı; anlamca doğru olabilir.</p>';
   if(r.tip)h+='<p class="text-xs text-slate-600 mt-2">💡 '+esc(r.tip)+'</p>';
   if(note)h+='<p class="text-xs text-slate-500 mt-2">'+esc(note)+'</p>';
+  if(r.local&&!r.correct&&saveMode&&navigator.onLine)h+='<button type="button" id="pt-ai-check" class="mt-3 py-2 px-4 rounded-xl text-sm font-semibold bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 transition">🔍 Hatalarımı açıkla (1 yapay zekâ isteği)</button>';
   $('pt-result').innerHTML=h+'</div>';
   $('pt-say').classList.remove('hidden');
 }
@@ -3130,13 +3136,14 @@ function renderExplain(d){
   if(d.tip)h+='<p class="text-sm text-slate-700">💡 '+esc(d.tip)+'</p>';
   return h;
 }
-async function loadExplain(){
+async function loadExplain(force){
   const c=cards[idx],my=idx,body=$('pt-exp-body');
   setExp(true);
   const hit=exp[ekey(c)];
   if(hit){body.innerHTML=renderExplain(hit);return;}
   const note=t=>'<p class="text-xs text-slate-500">'+t+'</p>';
   body.innerHTML=(c.tip?'<p class="text-sm text-slate-700">💡 '+esc(c.tip)+'</p>':'');
+  if(saveMode&&force!==true){body.insertAdjacentHTML('beforeend','<button type="button" id="pt-exp-gen" class="py-2 px-4 rounded-xl text-sm font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition">📖 Ayrıntılı anlatımı hazırla (1 yapay zekâ isteği, sonra kayıtlı)</button>');return;}
   if(!navigator.onLine||typeof samplePromise==='undefined'){body.insertAdjacentHTML('beforeend',note('Ayrıntılı anlatım için internet gerekir. Kural ve kullanım yukarıda.'));return;}
   body.insertAdjacentHTML('beforeend','<p class="text-xs text-slate-500 animate-pulse">Ayrıntılı anlatım hazırlanıyor…</p>');
   try{
@@ -3180,7 +3187,10 @@ function ingest(buf){
   openStruct(i<cards.length?i:0);
 }
 $('pt-exp-toggle').addEventListener('click',()=>setExp(!expOpen));
-$('pt-exp-body').addEventListener('click',e=>{if(e.target.closest('#pt-exp-retry'))loadExplain();});
+$('pt-exp-body').addEventListener('click',e=>{if(e.target.closest('#pt-exp-retry,#pt-exp-gen'))loadExplain(true);});
+$('pt-result').addEventListener('click',e=>{if(e.target.closest('#pt-ai-check'))check(true);});
+$('pt-save').checked=saveMode;
+$('pt-save').addEventListener('change',e=>{saveMode=e.target.checked;try{localStorage.setItem('ptSave',saveMode?'1':'0');}catch(err){}if(cards.length)loadExplain();});
 $('pt-struct').addEventListener('change',e=>openStruct(parseInt(e.target.value,10)));
 $('pt-nextstruct').addEventListener('click',()=>openStruct(idx+1));
 $('pt-more').addEventListener('click',more);
