@@ -476,10 +476,24 @@ button:disabled{opacity:.5;cursor:not-allowed}
                     <span class="w-2 h-2 rounded-full bg-indigo-600 inline-block"></span>
                     Çeviri Alıştırması
                 </h3>
-                <p class="text-xs sm:text-sm text-slate-500 mb-4">Metnin konusuna ve seviyesine uygun 5 cümleyi çevirin. Çevirdikten sonra yapay zekâ hatalarınızı bulup açıklar.</p>
+                <p class="text-xs sm:text-sm text-slate-500 mb-4">Metnin konusuna ve seviyesine uygun 5 cümleyi çevirin ya da kendi Excel listenizden cümle seçtirin. Çevirdikten sonra yapay zekâ hatalarınızı bulup açıklar.</p>
                 <div class="flex flex-wrap gap-2 mb-4">
                     <button type="button" id="trans-tab-en-tr" class="py-2 px-4 rounded-xl text-sm font-medium transition bg-indigo-600 text-white">İngilizce → Türkçe</button>
                     <button type="button" id="trans-tab-tr-en" class="py-2 px-4 rounded-xl text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200">Türkçe → İngilizce</button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 mb-4">
+                    <span class="text-xs font-semibold text-slate-700">Cümle kaynağı:</span>
+                    <button type="button" id="trans-src-ai" class="py-2 px-4 rounded-xl text-sm font-medium transition bg-indigo-600 text-white">✨ Yapay zekâ</button>
+                    <button type="button" id="trans-src-list" class="py-2 px-4 rounded-xl text-sm font-medium transition bg-slate-100 text-slate-700 hover:bg-slate-200">📄 Kendi listem</button>
+                </div>
+                <div id="trans-list-box" class="hidden mb-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-600">
+                    <p id="trans-list-info"></p>
+                    <p class="text-xs text-slate-500 mt-1">Excel'de <b>A sütunu Türkçe cümle</b>, <b>B sütunu cümlenin İngilizcesi</b> olmalı (ilk sayfa okunur).</p>
+                    <div class="flex flex-wrap gap-4 mt-2">
+                        <button type="button" id="trans-list-upload" class="font-semibold text-indigo-600 hover:underline text-sm">⬆ Excel yükle</button>
+                        <button type="button" id="trans-list-clear" class="hidden text-sm text-slate-500 hover:underline">Listeyi kaldır</button>
+                    </div>
+                    <input type="file" id="trans-list-file" accept=".xlsx,.xls,.csv" class="hidden">
                 </div>
                 <button type="button" id="trans-generate" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 px-5 rounded-xl text-sm transition disabled:opacity-60">5 Cümle Oluştur</button>
                 <p id="trans-status" class="mt-3 text-sm text-red-500 font-medium"></p>
@@ -1765,12 +1779,13 @@ Items: ${JSON.stringify(items)}`;
                 b.classList.toggle('bg-slate-100', !active);
                 b.classList.toggle('text-slate-700', !active);
             });
-            transGenBtn.textContent = transState[dir] ? 'Yeni 5 Cümle Oluştur' : '5 Cümle Oluştur';
+            transGenBtn.textContent = transGenLabel();
             renderTransItems();
         }
 
         async function generateTransSentences() {
             if (transBusy) return;
+            if (transSrc === 'list') { pickFromList(); return; }
             const dir = transDir;
             transStatusEl.textContent = '';
             const sample = await samplePromise;
@@ -1791,7 +1806,7 @@ Items: ${JSON.stringify(items)}`;
                 transGenBtn.textContent = old;
             } finally {
                 setTransBusy(false);
-                transGenBtn.textContent = transState[transDir] ? 'Yeni 5 Cümle Oluştur' : '5 Cümle Oluştur';
+                transGenBtn.textContent = transGenLabel();
             }
         }
 
@@ -1801,14 +1816,22 @@ Items: ${JSON.stringify(items)}`;
             if (!st || transBusy) return;
             transStatusEl.textContent = '';
             const answered = [];
+            let anyText = false;
             st.items.forEach((it, i) => {
                 const learner = (st.answers[i] || '').trim();
-                if (learner) answered.push({ id: i + 1, source: it.source, reference: it.reference, learner: learner.slice(0, 500) });
-                else st.feedback[i] = { verdict: 'none', corrected: '', errors: [] };
+                if (!learner) { st.feedback[i] = { verdict: 'none', corrected: '', errors: [] }; return; }
+                anyText = true;
+                if (transSame(learner, it.reference, dir)) st.feedback[i] = { verdict: 'correct', corrected: learner, errors: [] };
+                else answered.push({ id: i + 1, source: it.source, reference: it.reference, learner: learner.slice(0, 500) });
             });
-            if (!answered.length) {
+            if (!anyText) {
                 transStatusEl.textContent = 'Önce en az bir cümleyi çevirin.';
                 renderTransItems();
+                return;
+            }
+            if (!answered.length) {
+                renderTransItems();
+                transCheckBtn.textContent = 'Çevirileri Tekrar Kontrol Et';
                 return;
             }
             const sample = await samplePromise;
@@ -1835,11 +1858,88 @@ Items: ${JSON.stringify(items)}`;
             }
         }
 
+        // Kendi cümle listesi (A: Türkçe, B: İngilizce)
+        let transSrc = 'ai', transList = [];
+        const transUsed = new Set();
+        try { transList = JSON.parse(localStorage.getItem('transList') || '[]').filter(x => Array.isArray(x) && x[0] && x[1]); } catch (e) { transList = []; }
+        try { if (transList.length && localStorage.getItem('transSrc') === 'list') transSrc = 'list'; } catch (e) {}
+        function transGenLabel() {
+            const has = !!transState[transDir];
+            return transSrc === 'list' ? (has ? 'Listeden Yeni 5 Cümle Seç' : 'Listeden 5 Cümle Seç') : (has ? 'Yeni 5 Cümle Oluştur' : '5 Cümle Oluştur');
+        }
+        function transSame(a, b, dir) {
+            const lc = dir === 'tr-en' ? (s => s.toLowerCase()) : (s => s.toLocaleLowerCase('tr-TR'));
+            const n = s => lc(String(s)).replace(/[’‘`]/g, "'").replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+            return n(a) === n(b);
+        }
+        function renderTransSrc() {
+            [['ai', 'trans-src-ai'], ['list', 'trans-src-list']].forEach(([k, id]) => {
+                const b = document.getElementById(id), on = transSrc === k;
+                b.classList.toggle('bg-indigo-600', on); b.classList.toggle('text-white', on);
+                b.classList.toggle('bg-slate-100', !on); b.classList.toggle('text-slate-700', !on);
+            });
+            document.getElementById('trans-list-box').classList.toggle('hidden', transSrc !== 'list');
+            document.getElementById('trans-list-info').textContent = transList.length ? transList.length + ' cümle yüklü. Cümleler bu listeden rastgele seçilir, yapay zekâ cümle üretmez.' : 'Henüz liste yüklenmedi.';
+            document.getElementById('trans-list-clear').classList.toggle('hidden', !transList.length);
+            transGenBtn.textContent = transGenLabel();
+        }
+        function setTransSrc(k) {
+            transSrc = k; transStatusEl.textContent = '';
+            try { localStorage.setItem('transSrc', k); } catch (e) {}
+            renderTransSrc();
+        }
+        function pickFromList() {
+            if (!transList.length) { transStatusEl.textContent = 'Önce Excel dosyası yükleyin.'; return; }
+            const dir = transDir;
+            let pool = transList.map((_, i) => i).filter(i => !transUsed.has(i));
+            if (pool.length < Math.min(5, transList.length)) { transUsed.clear(); pool = transList.map((_, i) => i); }
+            const picked = pool.sort(() => Math.random() - 0.5).slice(0, 5);
+            picked.forEach(i => transUsed.add(i));
+            transStatusEl.textContent = '';
+            transState[dir] = {
+                items: picked.map(i => ({ source: dir === 'en-tr' ? transList[i][1] : transList[i][0], reference: dir === 'en-tr' ? transList[i][0] : transList[i][1] })),
+                answers: {}, feedback: {}
+            };
+            setTransDir(dir);
+        }
+        document.getElementById('trans-src-ai').addEventListener('click', () => setTransSrc('ai'));
+        document.getElementById('trans-src-list').addEventListener('click', () => setTransSrc('list'));
+        document.getElementById('trans-list-upload').addEventListener('click', () => document.getElementById('trans-list-file').click());
+        document.getElementById('trans-list-clear').addEventListener('click', () => {
+            transList = []; transUsed.clear();
+            try { localStorage.removeItem('transList'); } catch (e) {}
+            renderTransSrc();
+        });
+        document.getElementById('trans-list-file').addEventListener('change', async (e) => {
+            const f = e.target.files[0]; e.target.value = '';
+            if (!f) return;
+            if (typeof XLSX === 'undefined') { transStatusEl.textContent = 'Excel okuyucu yüklenemedi. Sayfayı yenileyip tekrar deneyin.'; return; }
+            try {
+                const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+                const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', blankrows: false });
+                const fold = v => String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const out = [];
+                rows.forEach((r, i) => {
+                    const tr = cleanStr(r[0]).slice(0, 300), en = cleanStr(r[1]).slice(0, 300);
+                    if (!tr || !en) return;
+                    if (i === 0 && /^(turkce|ingilizce|english|turkish)/.test(fold(r[0]))) return;
+                    out.push([tr, en]);
+                });
+                if (!out.length) { transStatusEl.textContent = 'Dosyada geçerli cümle bulunamadı. A sütununda Türkçe, B sütununda İngilizce cümle olmalı.'; return; }
+                transList = out.slice(0, 3000); transUsed.clear();
+                try { localStorage.setItem('transList', JSON.stringify(transList)); } catch (err) {}
+                setTransSrc('list');
+            } catch (err) {
+                transStatusEl.textContent = 'Dosya okunamadı. .xlsx, .xls veya .csv dosyası seçin.';
+            }
+        });
+
         document.getElementById('trans-tab-en-tr').addEventListener('click', () => setTransDir('en-tr'));
         document.getElementById('trans-tab-tr-en').addEventListener('click', () => setTransDir('tr-en'));
         transGenBtn.addEventListener('click', generateTransSentences);
         transCheckBtn.addEventListener('click', checkTranslations);
         setTransDir('en-tr');
+        renderTransSrc();
 
                 const TENSE_NAMES = {
             "Mixed": "a natural mix of tenses",
